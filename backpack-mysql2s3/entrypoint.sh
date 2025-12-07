@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 export TZ="Asia/Seoul"
 
