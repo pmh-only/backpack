@@ -19,6 +19,7 @@ while true; do
 
   mysqldump \
     -h $DATABASE_HOST \
+    -u $DATABASE_USER \
     -P $DATABASE_PORT \
     -p"$DATABASE_PASSWORD" \
     --all-databases --single-transaction --quick \
