@@ -20,7 +20,7 @@ dump() {
 if [[ $1 == "now" ]]; then
   dump
   sleep infinity
-done
+fi
 
 while true; do
   now=$(date +%s)
