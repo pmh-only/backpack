@@ -2,6 +2,26 @@
 
 export TZ="Asia/Seoul"
 
+dump() {
+  mysqldump \
+    -h $DATABASE_HOST \
+    -u $DATABASE_USER \
+    -P $DATABASE_PORT \
+    -p"$DATABASE_PASSWORD" \
+    --all-databases --single-transaction --quick \
+    --add-drop-table --complete-insert --system=users --flush-privileges > /tmp/dump.out
+
+  aws s3 cp \
+    /tmp/dump.out \
+    s3://$S3_DUMP_URI/$(date +%Y-%m-%dT%H:%M:%S).sql \
+    --endpoint-url $S3_ENDPOINT_URL
+}
+
+if [[ $1 == "now" ]]; then
+  dump
+  sleep infinity
+done
+
 while true; do
   now=$(date +%s)
   target=$(date -d "03:00" +%s)
@@ -17,17 +37,6 @@ while true; do
 
   echo "Running task at $(date)"
 
-  mysqldump \
-    -h $DATABASE_HOST \
-    -u $DATABASE_USER \
-    -P $DATABASE_PORT \
-    -p"$DATABASE_PASSWORD" \
-    --all-databases --single-transaction --quick \
-    --add-drop-table --complete-insert --system=users --flush-privileges > /tmp/dump.out
-
-  aws s3 cp \
-    /tmp/dump.out \
-    s3://$S3_DUMP_URI/$(date +%Y-%m-%dT%H:%M:%S).sql \
-    --endpoint-url $S3_ENDPOINT_URL
+  dump
 
 done
