@@ -1,7 +1,5 @@
 #!/bin/sh
 
-export TZ="Asia/Seoul"
-
 dump() {
   mysqldump \
     -h $DATABASE_HOST \
@@ -18,6 +16,9 @@ dump() {
 }
 
 if [[ $1 == "now" ]]; then
+  echo "Wait 30 seconds for mysql bootstrap"
+  sleep 30
+
   dump
   sleep infinity
 fi
@@ -36,7 +37,5 @@ while true; do
   sleep "$sleep_sec"
 
   echo "Running task at $(date)"
-
   dump
-
 done
