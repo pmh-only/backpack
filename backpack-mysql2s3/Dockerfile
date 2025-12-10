@@ -2,6 +2,6 @@ FROM alpine:latest
 
 RUN apk add --no-cache aws-cli mariadb-client mariadb-connector-c tzdata
 
-COPY ./entrypoint.sh /
+COPY ./backpack /usr/bin/
 
-ENTRYPOINT [ "/entrypoint.sh" ]
+ENTRYPOINT [ "/usr/bin/backpack" ]

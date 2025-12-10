@@ -1,0 +1,60 @@
+#!/bin/sh
+
+[ -z "$TZ" ] && export TZ="Asia/Seoul"
+
+RUN_AT="${RUN_AT:-03:00}"
+
+RUN_H=$(echo "$RUN_AT" | cut -d: -f1)
+RUN_M=$(echo "$RUN_AT" | cut -d: -f2)
+
+RUN_H=$((10#$RUN_H))
+RUN_M=$((10#$RUN_M))
+RUN_TARGET_SEC=$((RUN_H * 3600 + RUN_M * 60))
+
+dump() {
+  mysqldump \
+    -h "$DATABASE_HOST" \
+    -u "$DATABASE_USER" \
+    -P "$DATABASE_PORT" \
+    -p"$DATABASE_PASSWORD" \
+    --all-databases --single-transaction --quick \
+    --add-drop-table --complete-insert --system=users --flush-privileges \
+    > /tmp/dump.out
+
+  aws s3 cp \
+    /tmp/dump.out \
+    "s3://$S3_DUMP_URI/$(date +%Y-%m-%dT%H:%M:%S).sql" \
+    --endpoint-url "$S3_ENDPOINT_URL"
+}
+
+if [ "$1" = "now" ]; then
+  echo "Wait 30 seconds for mysql bootstrap"
+  sleep 30
+  echo "Running immediate dump at $(date)"
+  dump
+  while :; do sleep 86400; done
+fi
+
+while :; do
+  h=$(date +%H) || h=0
+  m=$(date +%M) || m=0
+  s=$(date +%S) || s=0
+
+  h=$((10#$h))
+  m=$((10#$m))
+  s=$((10#$s))
+
+  now_sec=$((h*3600 + m*60 + s))
+
+  if [ "$now_sec" -lt "$RUN_TARGET_SEC" ]; then
+    sleep_sec=$(( RUN_TARGET_SEC - now_sec ))
+  else
+    sleep_sec=$(( 24*3600 - now_sec + RUN_TARGET_SEC ))
+  fi
+
+  echo "Sleeping for $sleep_sec seconds until next $RUN_AT KST (now: $(date))"
+  sleep "$sleep_sec"
+
+  echo "Running scheduled dump at $(date)"
+  dump
+done
