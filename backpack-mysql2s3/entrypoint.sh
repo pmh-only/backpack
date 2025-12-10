@@ -24,18 +24,22 @@ if [[ $1 == "now" ]]; then
 fi
 
 while true; do
-  now=$(date +%s)
-  target=$(date -d "03:00" +%s)
+  now_sec=$(date +%H)
+  now_min=$(date +%M)
+  now_sec=$((now_sec*3600 + now_min*60 + $(date +%S)))
 
-  if [ "$now" -ge "$target" ]; then
-    target=$(date -d "tomorrow 03:00" +%s)
+  target_sec=$((3*3600))
+
+  if [ "$now_sec" -lt "$target_sec" ]; then
+    sleep_sec=$(( target_sec - now_sec ))
+  else
+    sleep_sec=$(( 24*3600 - now_sec + target_sec ))
   fi
 
-  sleep_sec=$(( target - now ))
-
-  echo "Sleeping for $sleep_sec seconds until 03:00 KST"
+  echo "Sleeping for $sleep_sec seconds until next 03:00"
   sleep "$sleep_sec"
 
+  # Run your job
   echo "Running task at $(date)"
   dump
 done
