@@ -1,9 +1,11 @@
-name: Build images
+name: Build pgsql2s3 image
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+    paths:
+      - backpack-pgsql2s3/**
 
 permissions:
   contents: read
@@ -34,7 +36,7 @@ jobs:
         with:
           push: true
           platforms: linux/arm64,linux/amd64
-          context: ./backpack-mysql2s3
-          tags: ghcr.io/pmh-only/backpack-mysql2s3:latest
+          context: ./backpack-pgsql2s3
+          tags: ghcr.io/pmh-only/backpack-pgsql2s3:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

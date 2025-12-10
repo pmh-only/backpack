@@ -1,0 +1,111 @@
+#!/bin/sh
+
+# Use KST unless provided
+[ -z "$TZ" ] && export TZ="Asia/Seoul"
+
+# Default schedule time
+RUN_AT="${RUN_AT:-03:00}"
+
+# Parse RUN_AT="HH:MM"
+RUN_H=$(echo "$RUN_AT" | cut -d: -f1)
+RUN_M=$(echo "$RUN_AT" | cut -d: -f2)
+
+# Convert safely to integers
+RUN_H=$((10#$RUN_H))
+RUN_M=$((10#$RUN_M))
+RUN_TARGET_SEC=$((RUN_H * 3600 + RUN_M * 60))
+
+# Default PostgreSQL port if not set
+[ -z "$DATABASE_PORT" ] && DATABASE_PORT=5432
+
+dump() {
+  # Single timestamp (directory/prefix) for this dump set
+  TS="$(date +%Y-%m-%dT%H:%M:%S)"
+  S3_PREFIX="s3://$S3_DUMP_URI/$TS"
+
+  echo "Starting PostgreSQL backup at $TS"
+
+  export PGPASSWORD="$DATABASE_PASSWORD"
+
+  # 1) Globals: roles, tablespaces, etc.
+  echo "Dumping globals with pg_dumpall --globals-only"
+  pg_dumpall \
+    -h "$DATABASE_HOST" \
+    -p "$DATABASE_PORT" \
+    -U "$DATABASE_USER" \
+    --globals-only \
+    > /tmp/globals.sql
+
+  aws s3 cp \
+    /tmp/globals.sql \
+    "$S3_PREFIX/globals.sql" \
+    --endpoint-url "$S3_ENDPOINT_URL"
+
+  # 2) Per-database dumps
+  echo "Enumerating databases"
+  DBS=$(
+    psql \
+      -h "$DATABASE_HOST" \
+      -p "$DATABASE_PORT" \
+      -U "$DATABASE_USER" \
+      -At \
+      -c "SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate;"
+  )
+
+  for db in $DBS; do
+    echo "Dumping database: $db"
+    # Compressed, custom format, suitable for pg_restore
+    pg_dump \
+      -h "$DATABASE_HOST" \
+      -p "$DATABASE_PORT" \
+      -U "$DATABASE_USER" \
+      -Fc \
+      --create \
+      "$db" \
+      > "/tmp/${db}.dump"
+
+    aws s3 cp \
+      "/tmp/${db}.dump" \
+      "$S3_PREFIX/${db}.dump" \
+      --endpoint-url "$S3_ENDPOINT_URL"
+
+    rm -f "/tmp/${db}.dump"
+  done
+
+  unset PGPASSWORD
+  rm -f /tmp/globals.sql
+
+  echo "Finished PostgreSQL backup set at $S3_PREFIX"
+}
+
+if [ "$1" = "now" ]; then
+  echo "Wait 30 seconds for PostgreSQL bootstrap"
+  sleep 30
+  echo "Running immediate dump at $(date)"
+  dump
+  while :; do sleep 86400; done
+fi
+
+while :; do
+  h=$(date +%H) || h=0
+  m=$(date +%M) || m=0
+  s=$(date +%S) || s=0
+
+  h=$((10#$h))
+  m=$((10#$m))
+  s=$((10#$s))
+
+  now_sec=$((h*3600 + m*60 + s))
+
+  if [ "$now_sec" -lt "$RUN_TARGET_SEC" ]; then
+    sleep_sec=$(( RUN_TARGET_SEC - now_sec ))
+  else
+    sleep_sec=$(( 24*3600 - now_sec + RUN_TARGET_SEC ))
+  fi
+
+  echo "Sleeping for $sleep_sec seconds until next $RUN_AT KST (now: $(date))"
+  sleep "$sleep_sec"
+
+  echo "Running scheduled dump at $(date)"
+  dump
+done
