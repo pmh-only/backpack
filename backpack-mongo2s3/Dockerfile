@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-RUN apk add --no-cache aws-cli postgresql-client tzdata
+RUN apk add --no-cache aws-cli mongodb-tools tzdata
 
 COPY ./backpack /usr/bin/
 

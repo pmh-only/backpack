@@ -26,6 +26,7 @@ dump() {
     --port="$DATABASE_PORT" \
     --password="$DATABASE_PASSWORD" \
     --archive="$ARCHIVE" \
+    --authenticationDatabase="admin" \
     --gzip
 
   echo "Uploading to S3..."
