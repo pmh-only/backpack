@@ -15,16 +15,11 @@ RUN_H=$((10#$RUN_H))
 RUN_M=$((10#$RUN_M))
 RUN_TARGET_SEC=$((RUN_H * 3600 + RUN_M * 60))
 
-# Default PostgreSQL port if not set
-[ -z "$DATABASE_PORT" ] && DATABASE_PORT=5432
-
 dump() {
-  # Single timestamp (directory/prefix) for this dump set
   TS="$(date +%Y-%m-%dT%H:%M:%S)"
   S3_PREFIX="s3://$S3_DUMP_URI/$TS"
 
   echo "Starting PostgreSQL backup at $TS"
-
   export PGPASSWORD="$DATABASE_PASSWORD"
 
   # 1) Globals: roles, tablespaces, etc.
