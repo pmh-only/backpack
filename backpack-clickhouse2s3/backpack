@@ -1,0 +1,88 @@
+#!/bin/sh
+
+# Timezone (KST) unless provided
+[ -z "$TZ" ] && export TZ="Asia/Seoul"
+
+# Default schedule time (HH:MM, 24h)
+RUN_AT="${RUN_AT:-03:00}"
+
+# Parse RUN_AT="HH:MM"
+RUN_H=$(echo "$RUN_AT" | cut -d: -f1)
+RUN_M=$(echo "$RUN_AT" | cut -d: -f2)
+
+RUN_H=$((10#$RUN_H))
+RUN_M=$((10#$RUN_M))
+RUN_TARGET_SEC=$((RUN_H * 3600 + RUN_M * 60))
+
+DATABASE_HOST="${DATABASE_HOST:-localhost}"
+DATABASE_PORT="${DATABASE_PORT:-8123}"
+DATABASE_USER="${DATABASE_USER:-default}"
+DATABASE_PASSWORD="${DATABASE_PASSWORD:-}"
+
+dump() {
+  TS="$(date +%Y-%m-%dT%H:%M:%S)"
+
+  BASE_ENDPOINT="${S3_ENDPOINT_URL%/}"
+  S3_URL="${BASE_ENDPOINT}/${TS}.zip"
+
+  echo "Starting ClickHouse BACKUP ALL at $TS → $S3_URL"
+
+  QUERY="BACKUP ALL TO S3('${S3_URL}', '${AWS_ACCESS_KEY_ID}', '${AWS_SECRET_ACCESS_KEY}', '')"
+
+  URL="http://${DATABASE_HOST}:${DATABASE_PORT}/"
+
+  CURL_USER="$DATABASE_USER"
+  CURL_PASS="$DATABASE_PASSWORD"
+
+  RESULT="$(curl -s -w '%{http_code}' -o /tmp/ch.out \
+      -u "${CURL_USER}:${CURL_PASS}" \
+      --data-binary "$QUERY" \
+      "$URL")"
+
+  HTTP_CODE="$RESULT"
+  BODY="$(cat /tmp/ch.out)"
+
+  if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q "OK"; then
+    echo "Backup completed successfully at $(date)"
+  else
+    echo "ClickHouse BACKUP ALL FAILED (HTTP $HTTP_CODE)"
+    echo "--- Response body ---"
+    echo "$BODY"
+    echo "---------------------"
+  fi
+
+  rm -f /tmp/ch.out
+}
+
+if [ "$1" = "now" ]; then
+  echo "Wait 30 seconds for ClickHouse bootstrap..."
+  sleep 30
+  echo "Running immediate BACKUP ALL at $(date)"
+  dump
+  echo "Idling after one-shot backup"
+  while :; do sleep 86400; done
+fi
+
+while :; do
+  h=$(date +%H) || h=0
+  m=$(date +%M) || m=0
+  s=$(date +%S) || s=0
+
+  h=$((10#$h))
+  m=$((10#$m))
+  s=$((10#$s))
+
+  now_sec=$((h*3600 + m*60 + s))
+
+  if [ "$now_sec" -lt "$RUN_TARGET_SEC" ]; then
+    sleep_sec=$(( RUN_TARGET_SEC - now_sec ))
+  else
+    sleep_sec=$(( 24*3600 - now_sec + RUN_TARGET_SEC ))
+  fi
+
+  echo "Sleeping $sleep_sec seconds until next $RUN_AT KST (now: $(date))"
+  sleep "$sleep_sec"
+
+  echo "Running scheduled BACKUP ALL at $(date)"
+  dump
+done
