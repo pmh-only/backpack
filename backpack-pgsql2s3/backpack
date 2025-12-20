@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# Use KST unless provided
-[ -z "$TZ" ] && export TZ="Asia/Seoul"
+# Timezone (UTC) unless provided
+[ -z "$TZ" ] && export TZ="Etc/UTC"
 
 # Default schedule time
 RUN_AT="${RUN_AT:-03:00}"
@@ -98,7 +98,7 @@ while :; do
     sleep_sec=$(( 24*3600 - now_sec + RUN_TARGET_SEC ))
   fi
 
-  echo "Sleeping for $sleep_sec seconds until next $RUN_AT KST (now: $(date))"
+  echo "Sleeping for $sleep_sec seconds until next $RUN_AT ($TZ, now: $(date))"
   sleep "$sleep_sec"
 
   echo "Running scheduled dump at $(date)"
