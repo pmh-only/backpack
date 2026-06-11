@@ -1,0 +1,80 @@
+#!/bin/sh
+
+# Timezone (UTC) unless provided
+[ -z "$TZ" ] && export TZ="Etc/UTC"
+
+# Default schedule time (HH:MM, 24h)
+RUN_AT="${RUN_AT:-03:00}"
+
+# Parse RUN_AT="HH:MM"
+RUN_H=$(echo "$RUN_AT" | cut -d: -f1)
+RUN_M=$(echo "$RUN_AT" | cut -d: -f2)
+
+RUN_H=$((10#$RUN_H))
+RUN_M=$((10#$RUN_M))
+RUN_TARGET_SEC=$((RUN_H * 3600 + RUN_M * 60))
+
+dump() {
+  TS="$(date +%Y-%m-%dT%H:%M:%S)"
+
+  BASE_ENDPOINT="${S3_ENDPOINT_URL%/}"
+  S3_URL="${BASE_ENDPOINT}/${TS}.zip"
+
+  echo "Starting Bitwarden backup at $TS → $S3_URL"
+
+  bw config server $BW_URL --nointeraction
+  bw login --apikey --nointeraction --quiet
+
+  SESSION_ID=$(bw unlock \
+    --passwordenv BW_PASSWORD \
+    --nointeraction --raw)
+
+  bw export \
+    --session "$SESSION_ID" \
+    --format encrypted_json \
+    --password "$BW_PASSWORD" \
+    --output /tmp/dump.json
+
+  bw logout --nointeraction
+  
+  aws s3 cp \
+    /tmp/dump.json \
+    "s3://$S3_DUMP_URI/$(date +%Y-%m-%dT%H:%M:%S).json" \
+    --endpoint-url "$S3_ENDPOINT_URL"
+    
+  echo "Finished Bitwarden backup at $S3_PREFIX"
+  rm -f /tmp/dump.json
+}
+
+if [ "$1" = "now" ]; then
+  echo "Wait 30 seconds for Bitwarden bootstrap..."
+  sleep 30
+  echo "Running immediate backup at $(date)"
+  dump
+  echo "Idling after one-shot backup"
+  while :; do sleep 86400; done
+fi
+
+while :; do
+  h=$(date +%H) || h=0
+  m=$(date +%M) || m=0
+  s=$(date +%S) || s=0
+
+  h=$((10#$h))
+  m=$((10#$m))
+  s=$((10#$s))
+
+  now_sec=$((h*3600 + m*60 + s))
+
+  if [ "$now_sec" -lt "$RUN_TARGET_SEC" ]; then
+    sleep_sec=$(( RUN_TARGET_SEC - now_sec ))
+  else
+    sleep_sec=$(( 24*3600 - now_sec + RUN_TARGET_SEC ))
+  fi
+
+  echo "Sleeping $sleep_sec seconds until next $RUN_AT ($TZ, now: $(date))"
+  sleep "$sleep_sec"
+
+  echo "Running scheduled backup at $(date)"
+  dump
+done
